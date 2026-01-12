@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { soundManager } from '../utils/audio';
 
 const platformColors = {
     steam: '#1b2838',
@@ -40,10 +41,19 @@ function GameCard({ game, onLaunch, onEdit, onDelete }) {
     return (
         <div
             className="game-card"
-            onMouseEnter={() => setIsHovered(true)}
+            onMouseEnter={() => {
+                setIsHovered(true);
+                soundManager.playHover();
+            }}
             onMouseLeave={() => setIsHovered(false)}
         >
-            <div className="game-card-image-container" onClick={() => onLaunch(game)}>
+            <div
+                className="game-card-image-container"
+                onClick={() => {
+                    soundManager.playClick();
+                    onLaunch(game);
+                }}
+            >
                 {imageError || !game.coverUrl ? (
                     <div className={`game-card-placeholder ${game.platform}`} style={{ background: `linear-gradient(135deg, ${badgeColor} 0%, #1a1a2e 100%)` }}>
                         <span className="game-title-text">{game.name}</span>
@@ -86,7 +96,11 @@ function GameCard({ game, onLaunch, onEdit, onDelete }) {
                             <button
                                 className="card-action-btn edit-btn"
                                 title="Editar Portada"
-                                onClick={(e) => { e.stopPropagation(); onEdit(game); }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    soundManager.playClick();
+                                    onEdit(game);
+                                }}
                             >
                                 ✏️
                             </button>
@@ -94,7 +108,11 @@ function GameCard({ game, onLaunch, onEdit, onDelete }) {
                                 <button
                                     className="card-action-btn delete-btn"
                                     title="Eliminar Juego"
-                                    onClick={(e) => { e.stopPropagation(); onDelete(game); }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        soundManager.playClick();
+                                        onDelete(game);
+                                    }}
                                 >
                                     🗑️
                                 </button>

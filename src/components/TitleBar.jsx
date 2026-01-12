@@ -1,14 +1,15 @@
-function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch }) {
-    const handleMinimize = () => window.electronAPI?.minimize();
-    const handleMaximize = () => window.electronAPI?.maximize();
-    const handleClose = () => window.electronAPI?.close();
+import { soundManager } from '../utils/audio';
+
+function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch, updateData }) {
+    const handleMinimize = () => { soundManager.playClick(); window.electronAPI?.minimize(); };
+    const handleMaximize = () => { soundManager.playClick(); window.electronAPI?.maximize(); };
+    const handleClose = () => { soundManager.playClick(); window.electronAPI?.close(); };
 
     return (
         <header className="title-bar">
             <div className="title-bar-drag">
                 <div className="app-logo">
-                    <span className="logo-icon">🎮</span>
-                    <h1>FKLauncher</h1>
+                    <h1 style={{ fontWeight: '800', fontSize: '18px' }}>FKLauncher</h1>
                 </div>
             </div>
             <div className="title-bar-search">
@@ -25,18 +26,51 @@ function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch }) {
                 </div>
             </div>
             <div className="title-bar-actions">
-                <button className="action-btn refresh-btn" onClick={onRefresh} title="Actualizar">
+                {updateData && (
+                    <button
+                        className="action-btn update-btn"
+                        onClick={() => {
+                            soundManager.playClick();
+                            window.electronAPI.openExternal(updateData.url);
+                        }}
+                        onMouseEnter={() => soundManager.playHover()}
+                        title={`Actualizar a ${updateData.version}`}
+                        style={{ color: '#4ade80', animation: 'pulse 2s infinite' }}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                    </button>
+                )}
+                <button
+                    className="action-btn refresh-btn"
+                    onClick={() => { soundManager.playClick(); onRefresh(); }}
+                    onMouseEnter={() => soundManager.playHover()}
+                    title="Actualizar"
+                >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                     </svg>
                 </button>
-                <button className="action-btn add-btn" onClick={onAddGame} title="Añadir juego">
+                <button
+                    className="action-btn add-btn"
+                    onClick={() => { soundManager.playClick(); onAddGame(); }}
+                    onMouseEnter={() => soundManager.playHover()}
+                    title="Añadir juego"
+                >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
                 </button>
-                <button className="action-btn settings-btn" onClick={onOpenSettings} title="Configuración">
+                <button
+                    className="action-btn settings-btn"
+                    onClick={() => { soundManager.playClick(); onOpenSettings(); }}
+                    onMouseEnter={() => soundManager.playHover()}
+                    title="Configuración"
+                >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <circle cx="12" cy="12" r="3" />
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -44,13 +78,25 @@ function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch }) {
                 </button>
             </div>
             <div className="window-controls">
-                <button className="window-btn minimize" onClick={handleMinimize}>
+                <button
+                    className="window-btn minimize"
+                    onClick={handleMinimize}
+                    onMouseEnter={() => soundManager.playHover()}
+                >
                     <svg viewBox="0 0 12 12"><rect y="5" width="10" height="1" fill="currentColor" /></svg>
                 </button>
-                <button className="window-btn maximize" onClick={handleMaximize}>
+                <button
+                    className="window-btn maximize"
+                    onClick={handleMaximize}
+                    onMouseEnter={() => soundManager.playHover()}
+                >
                     <svg viewBox="0 0 12 12"><rect x="1" y="1" width="9" height="9" fill="none" stroke="currentColor" /></svg>
                 </button>
-                <button className="window-btn close" onClick={handleClose}>
+                <button
+                    className="window-btn close"
+                    onClick={handleClose}
+                    onMouseEnter={() => soundManager.playHover()}
+                >
                     <svg viewBox="0 0 12 12">
                         <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" />
                         <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" />

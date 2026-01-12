@@ -18,5 +18,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectFile: () => ipcRenderer.invoke('select-file'),
     saveCustomGame: (game) => ipcRenderer.invoke('save-custom-game', game),
     deleteCustomGame: (gameId) => ipcRenderer.invoke('delete-custom-game', gameId),
-    saveCustomCover: (gameId, url) => ipcRenderer.invoke('save-custom-cover', gameId, url)
+    saveCustomCover: (gameId, url) => ipcRenderer.invoke('save-custom-cover', gameId, url),
+    // Updates
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    openExternal: (url) => ipcRenderer.invoke('open-external', url)
 });

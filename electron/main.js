@@ -229,38 +229,53 @@ ipcMain.handle('launch-game', async (event, exePath, isCommand, gameId) => {
 
             console.log(`ℹ️ Spawning in dir: ${gameDir}`);
 
-            const gameProcess = spawn(exePath, [], {
-                detached: true,
-                stdio: 'ignore',
-                cwd: gameDir
-            });
+            try {
+                const gameProcess = spawn(exePath, [], {
+                    detached: true,
+                    stdio: 'ignore',
+                    cwd: gameDir
+                });
 
-            gameProcess.on('close', (code) => {
-                if (gameId) {
-                    const endTime = Date.now();
-                    const durationInMs = endTime - startTime;
-                    const durationMinutes = Math.floor(durationInMs / 60000);
+                gameProcess.on('error', (err) => {
+                    console.error('Spawn error:', err);
+                    // Fallback if spawn fails immediately (e.g. EACCES)
+                    console.log('⚠️ Spawn failed, attempting shell.openPath...');
+                    shell.openPath(exePath);
+                });
 
-                    console.log(`🎮 Game "${gameId}" finished.`);
-                    console.log(`⏱️ Duration: ${durationInMs}ms (~${durationMinutes} min)`);
+                gameProcess.on('close', (code) => {
+                    if (gameId) {
+                        const endTime = Date.now();
+                        const durationInMs = endTime - startTime;
+                        const durationMinutes = Math.floor(durationInMs / 60000);
 
-                    if (durationMinutes > 0) {
-                        console.log(`💾 Saving stats for ${gameId}...`);
-                        const stats = loadPlayStats();
-                        const currentMinutes = stats[gameId] || 0;
-                        stats[gameId] = currentMinutes + durationMinutes;
-                        savePlayStats(stats);
-                        console.log(`✅ New total playtime: ${stats[gameId]} min`);
+                        console.log(`🎮 Game "${gameId}" finished.`);
+                        console.log(`⏱️ Duration: ${durationInMs}ms (~${durationMinutes} min)`);
+
+                        if (durationMinutes > 0) {
+                            console.log(`💾 Saving stats for ${gameId}...`);
+                            const stats = loadPlayStats();
+                            const currentMinutes = stats[gameId] || 0;
+                            stats[gameId] = currentMinutes + durationMinutes;
+                            savePlayStats(stats);
+                            console.log(`✅ New total playtime: ${stats[gameId]} min`);
+                        } else {
+                            console.log('⚠️ Playtime < 1 minute, not saved.');
+                        }
                     } else {
-                        console.log('⚠️ Playtime < 1 minute, not saved.');
+                        console.warn('⚠️ No Game ID provided, cannot track playtime.');
                     }
-                } else {
-                    console.warn('⚠️ No Game ID provided, cannot track playtime.');
-                }
-            });
+                });
 
-            gameProcess.unref();
-            return { success: true };
+                gameProcess.unref();
+                return { success: true };
+
+            } catch (spawnError) {
+                console.error('Spawn exception:', spawnError);
+                console.log('⚠️ Spawn exception, attempting shell.openPath...');
+                await shell.openPath(exePath);
+                return { success: true };
+            }
         }
         return { success: true };
     } catch (error) {
@@ -301,3 +316,46 @@ ipcMain.handle('window-maximize', () => {
     }
 });
 ipcMain.handle('window-close', () => mainWindow.close());
+
+// Update Check
+ipcMain.handle('check-for-updates', async () => {
+    try {
+        const response = await fetch('https://api.github.com/repos/FaKiNmc/Ffk-launcher/releases/latest');
+        if (!response.ok) throw new Error('GitHub API Error');
+
+        const data = await response.json();
+        const latestVersion = data.tag_name.replace('v', ''); // Remove 'v' prefix
+        const currentVersion = app.getVersion();
+
+        const isNewer = (v1, v2) => {
+            const pa = v1.split('.').map(Number);
+            const pb = v2.split('.').map(Number);
+            for (let i = 0; i < 3; i++) {
+                if (pa[i] > pb[i]) return true;
+                if (pa[i] < pb[i]) return false;
+            }
+            return false;
+        };
+
+        if (isNewer(latestVersion, currentVersion)) {
+            const isMandatory = (data.body || '').includes('[MANDATORY]');
+            return {
+                updateAvailable: true,
+                mandatory: isMandatory,
+                version: data.tag_name,
+                url: data.html_url,
+                notes: data.body
+            };
+        }
+
+        return { updateAvailable: false };
+    } catch (error) {
+        console.error('Update check failed:', error);
+        return { updateAvailable: false, error: error.message };
+    }
+});
+
+// Helper for opening external URLs
+ipcMain.handle('open-external', async (event, url) => {
+    await shell.openExternal(url);
+});

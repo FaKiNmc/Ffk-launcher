@@ -5,6 +5,7 @@ import GameGrid from './components/GameGrid';
 import AddGameModal from './components/AddGameModal';
 import EditGameModal from './components/EditGameModal';
 import SettingsModal from './components/SettingsModal';
+import UpdateModal from './components/UpdateModal';
 
 function App() {
     const [games, setGames] = useState([]);
@@ -16,6 +17,8 @@ function App() {
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [editingGame, setEditingGame] = useState(null);
     const [customGames, setCustomGames] = useState([]);
+    const [updateData, setUpdateData] = useState(null);
+    const [showUpdateModal, setShowUpdateModal] = useState(false);
 
     // Load saved colors on app start
     useEffect(() => {
@@ -74,6 +77,24 @@ function App() {
     useEffect(() => {
         scanGames();
     }, [scanGames]);
+
+    // Check for updates
+    useEffect(() => {
+        const checkUpdates = async () => {
+            if (window.electronAPI?.checkForUpdates) {
+                const data = await window.electronAPI.checkForUpdates();
+                if (data && data.updateAvailable) {
+                    console.log('Update available:', data);
+                    setUpdateData(data);
+                    // Show modal ONLY if it was marked as "mandatory" (now Recommended)
+                    if (data.mandatory) {
+                        setShowUpdateModal(true);
+                    }
+                }
+            }
+        };
+        checkUpdates();
+    }, []);
 
     const handleLaunchGame = async (game) => {
         if (window.electronAPI) {
@@ -153,11 +174,18 @@ function App() {
 
     return (
         <div className="app">
+            {showUpdateModal && (
+                <UpdateModal
+                    updateData={updateData}
+                    onClose={() => setShowUpdateModal(false)}
+                />
+            )}
             <TitleBar
                 onRefresh={scanGames}
                 onAddGame={() => setShowAddModal(true)}
                 onOpenSettings={() => setShowSettingsModal(true)}
                 onSearch={setSearchTerm}
+                updateData={updateData}
             />
             <div className="app-content">
                 <Sidebar activeFilter={filter} onFilterChange={setFilter} />

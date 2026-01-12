@@ -69,6 +69,8 @@ const launchers = [
     { id: 'custom', name: 'Mis Juegos', icon: '📁', color: '#8b5cf6' }
 ];
 
+import { soundManager } from '../utils/audio';
+
 function SidebarComponent({ activeFilter, onFilterChange }) {
     const handleOpenLauncher = async (launcherId) => {
         if (window.electronAPI && launcherId !== 'all' && launcherId !== 'custom') {
@@ -85,7 +87,11 @@ function SidebarComponent({ activeFilter, onFilterChange }) {
                         <button
                             key={launcher.id}
                             className={`nav-item ${activeFilter === launcher.id ? 'active' : ''}`}
-                            onClick={() => onFilterChange(launcher.id)}
+                            onClick={() => {
+                                soundManager.playClick();
+                                onFilterChange(launcher.id);
+                            }}
+                            onMouseEnter={() => soundManager.playHover()}
                             style={{ '--launcher-color': launcher.color }}
                         >
                             <span className="nav-icon" style={{ backgroundColor: launcher.color }}>
@@ -96,13 +102,19 @@ function SidebarComponent({ activeFilter, onFilterChange }) {
                     ))}
                 </div>
 
+
+
                 <div className="nav-section">
                     <span className="nav-section-title">Abrir Launcher</span>
                     {launchers.filter(l => !['all', 'custom'].includes(l.id)).map(launcher => (
                         <button
                             key={`open_${launcher.id}`}
                             className="nav-item launcher-btn"
-                            onClick={() => handleOpenLauncher(launcher.id)}
+                            onClick={() => {
+                                soundManager.playClick();
+                                handleOpenLauncher(launcher.id);
+                            }}
+                            onMouseEnter={() => soundManager.playHover()}
                             style={{ '--launcher-color': launcher.color }}
                         >
                             <span className="nav-icon" style={{ backgroundColor: launcher.color }}>
