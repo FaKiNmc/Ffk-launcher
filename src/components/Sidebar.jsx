@@ -55,6 +55,15 @@ const launcherIcons = {
             alt="Ubisoft"
             style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'brightness(0) invert(1)', transform: 'scale(0.8)' }}
         />
+    ),
+
+    // Xbox/Game Pass: Official Xbox logo
+    xbox: (
+        <img
+            src="https://upload.wikimedia.org/wikipedia/commons/f/f9/Xbox_one_logo.svg"
+            alt="Xbox"
+            style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'brightness(0) invert(1)', transform: 'scale(0.85)' }}
+        />
     )
 };
 
@@ -66,6 +75,7 @@ const launchers = [
     { id: 'riot', name: 'Riot Games', icon: null, color: '#d13639' },
     { id: 'ea', name: 'EA App', icon: null, color: '#ff4747' },
     { id: 'ubisoft', name: 'Ubisoft', icon: null, color: '#0070ff' },
+    { id: 'xbox', name: 'Game Pass', icon: null, color: '#107c10' },
     { id: 'custom', name: 'Mis Juegos', icon: '📁', color: '#8b5cf6' }
 ];
 

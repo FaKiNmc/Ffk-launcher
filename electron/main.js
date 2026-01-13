@@ -4,6 +4,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { scanAllGames } from './scanners/index.js';
 import { enrichGamesWithCovers } from './scanners/covers.js';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
+
+// Fix for duplicate taskbar icons on Windows - MUST BE AT TOP
+if (process.platform === 'win32') {
+    app.setAppUserModelId('com.isar.fklauncher');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +40,8 @@ function createWindow() {
     } else {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
+
+    setupUpdater(mainWindow);
 }
 
 app.whenReady().then(createWindow);
@@ -95,54 +104,11 @@ function saveCustomCovers(covers) {
 }
 
 // IPC Handlers
-// Play Stats Storage
-const playStatsPath = path.join(app.getPath('userData'), 'play-stats.json');
+ipcMain.handle('get-version', () => app.getVersion());
 
-function loadPlayStats() {
-    try {
-        if (fs.existsSync(playStatsPath)) {
-            return JSON.parse(fs.readFileSync(playStatsPath, 'utf8'));
-        }
-    } catch (e) {
-        console.error('Error loading play stats:', e);
-    }
-    return {};
-}
-
-function savePlayStats(stats) {
-    try {
-        fs.writeFileSync(playStatsPath, JSON.stringify(stats, null, 2));
-        return true;
-    } catch (e) {
-        console.error('Error saving play stats:', e);
-        return false;
-    }
-}
-
-// IPC Handlers
 ipcMain.handle('scan-games', async () => {
     const results = await scanAllGames();
     results.custom = loadCustomGames(); // Load persisted custom games
-
-    // Attach play time stats
-    const stats = loadPlayStats();
-
-    // Helper to merge stats
-    const attachStats = (gameList) => {
-        return gameList.map(game => ({
-            ...game,
-            playTime: stats[game.id] || 0
-        }));
-    };
-
-    results.steam = attachStats(results.steam);
-    results.epic = attachStats(results.epic);
-    results.rockstar = attachStats(results.rockstar);
-    results.riot = attachStats(results.riot);
-    results.ea = attachStats(results.ea);
-    results.ubisoft = attachStats(results.ubisoft);
-    results.custom = attachStats(results.custom);
-
     return results;
 });
 
@@ -200,11 +166,63 @@ ipcMain.handle('fetch-covers', async (event, games) => {
     }
 });
 
-ipcMain.handle('launch-game', async (event, exePath, isCommand, gameId) => {
+ipcMain.handle('launch-game', async (event, exePath, isCommand, gameId, requiresRiotClient, useShellLaunch) => {
     // 1. Log to console for debugging
-    console.log(`🔵 Launching: ${exePath} (ID: ${gameId})`);
+    console.log(`🔵 Launching: ${exePath} (ID: ${gameId}, Shell: ${useShellLaunch})`);
 
     try {
+        // Fallback: Riot game without RiotClientServices - try protocol with game args
+        if (requiresRiotClient) {
+            console.log('⚠️ RiotClientServices not found, using protocol fallback with game args');
+
+            // Try to extract game product from the exePath (which contains the game exe path)
+            // Detect which game it is based on the path
+            let productId = '';
+            const pathLower = exePath.toLowerCase();
+            if (pathLower.includes('valorant')) productId = 'valorant';
+            else if (pathLower.includes('league')) productId = 'league_of_legends';
+            else if (pathLower.includes('lor')) productId = 'bacon'; // LoR uses 'bacon' internally
+
+            // Open Riot Client via protocol with launch args - may auto-start the game
+            const protocolUrl = productId
+                ? `riotclient://--launch-product=${productId} --launch-patchline=live`
+                : 'riotclient://';
+
+            console.log(`🚀 Protocol fallback: ${protocolUrl}`);
+            await shell.openExternal(protocolUrl);
+            return { success: true, fallback: true };
+        }
+
+        // Use PowerShell Start-Process for Riot games (handles permissions better)
+        if (useShellLaunch) {
+            const { exec } = await import('child_process');
+
+            // Parse the command: "path\to\exe.exe" --arg1 --arg2
+            const match = exePath.match(/^"([^"]+)"\s*(.*)?$/);
+            if (match) {
+                const exeFile = match[1];
+                const args = match[2] || '';
+
+                // Use PowerShell with proper escaping
+                const psCommand = args
+                    ? `powershell -Command "Start-Process -FilePath '${exeFile}' -ArgumentList '${args}'"`
+                    : `powershell -Command "Start-Process -FilePath '${exeFile}'"`;
+
+                console.log(`🚀 Using PowerShell: ${psCommand}`);
+                exec(psCommand, (error) => {
+                    if (error) {
+                        console.error('PowerShell launch error:', error);
+                    }
+                });
+            } else {
+                // Fallback: just try to run it directly
+                console.log('⚠️ Could not parse command, using direct exec');
+                const { exec: execDirect } = await import('child_process');
+                execDirect(exePath);
+            }
+            return { success: true };
+        }
+
         // Check if it's a command with arguments (e.g., Riot games)
         if (isCommand || exePath.startsWith('"')) {
             const { exec } = await import('child_process');
@@ -222,9 +240,8 @@ ipcMain.handle('launch-game', async (event, exePath, isCommand, gameId) => {
             console.log('⚠️ Protocol URL - Tracking skipped (Steam/Epic internal)');
             await shell.openExternal(exePath);
         } else {
-            // It's a regular executable path - Track Duration if ID is present
+            // It's a regular executable path
             const { spawn } = await import('child_process');
-            const startTime = Date.now();
             const gameDir = path.dirname(exePath);
 
             console.log(`ℹ️ Spawning in dir: ${gameDir}`);
@@ -241,30 +258,6 @@ ipcMain.handle('launch-game', async (event, exePath, isCommand, gameId) => {
                     // Fallback if spawn fails immediately (e.g. EACCES)
                     console.log('⚠️ Spawn failed, attempting shell.openPath...');
                     shell.openPath(exePath);
-                });
-
-                gameProcess.on('close', (code) => {
-                    if (gameId) {
-                        const endTime = Date.now();
-                        const durationInMs = endTime - startTime;
-                        const durationMinutes = Math.floor(durationInMs / 60000);
-
-                        console.log(`🎮 Game "${gameId}" finished.`);
-                        console.log(`⏱️ Duration: ${durationInMs}ms (~${durationMinutes} min)`);
-
-                        if (durationMinutes > 0) {
-                            console.log(`💾 Saving stats for ${gameId}...`);
-                            const stats = loadPlayStats();
-                            const currentMinutes = stats[gameId] || 0;
-                            stats[gameId] = currentMinutes + durationMinutes;
-                            savePlayStats(stats);
-                            console.log(`✅ New total playtime: ${stats[gameId]} min`);
-                        } else {
-                            console.log('⚠️ Playtime < 1 minute, not saved.');
-                        }
-                    } else {
-                        console.warn('⚠️ No Game ID provided, cannot track playtime.');
-                    }
                 });
 
                 gameProcess.unref();
@@ -296,7 +289,8 @@ ipcMain.handle('open-launcher', async (event, launcher) => {
         rockstar: 'rockstar://',
         riot: 'riotclient://',
         ea: 'origin://',
-        ubisoft: 'uplay://launch'  // Ubisoft Connect uses uplay:// protocol
+        ubisoft: 'uplay://launch',
+        xbox: 'ms-windows-store://navigated-from-xbox' // Opens Xbox app
     };
 
     try {
@@ -317,41 +311,54 @@ ipcMain.handle('window-maximize', () => {
 });
 ipcMain.handle('window-close', () => mainWindow.close());
 
-// Update Check
+// --- Auto Updater Logic ---
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+const setupUpdater = (win) => {
+    autoUpdater.on('checking-for-update', () => {
+        console.log('🔄 Checking for update...');
+        win.webContents.send('update-log', 'Buscando actualizaciones...');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+        console.log('✨ Update available:', info.version);
+        win.webContents.send('update-available', info);
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+        console.log('✅ Update not available.');
+        win.webContents.send('update-log', 'Ya tienes la última versión.');
+    });
+
+    autoUpdater.on('error', (err) => {
+        console.error('❌ Error in auto-updater:', err);
+        win.webContents.send('update-error', err.message);
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+        const logMsg = `Descargando: ${Math.round(progressObj.percent)}% (${(progressObj.bytesPerSecond / 1024).toFixed(2)} KB/s)`;
+        console.log(logMsg);
+        win.webContents.send('download-progress', progressObj.percent);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log('✅ Update downloaded');
+        win.webContents.send('update-downloaded', info);
+    });
+};
+
+ipcMain.handle('install-update', () => {
+    autoUpdater.quitAndInstall();
+});
+
+// Replace old update check with autoUpdater
 ipcMain.handle('check-for-updates', async () => {
-    try {
-        const response = await fetch('https://api.github.com/repos/FaKiNmc/Ffk-launcher/releases/latest');
-        if (!response.ok) throw new Error('GitHub API Error');
-
-        const data = await response.json();
-        const latestVersion = data.tag_name.replace('v', ''); // Remove 'v' prefix
-        const currentVersion = app.getVersion();
-
-        const isNewer = (v1, v2) => {
-            const pa = v1.split('.').map(Number);
-            const pb = v2.split('.').map(Number);
-            for (let i = 0; i < 3; i++) {
-                if (pa[i] > pb[i]) return true;
-                if (pa[i] < pb[i]) return false;
-            }
-            return false;
-        };
-
-        if (isNewer(latestVersion, currentVersion)) {
-            const isMandatory = (data.body || '').includes('[MANDATORY]');
-            return {
-                updateAvailable: true,
-                mandatory: isMandatory,
-                version: data.tag_name,
-                url: data.html_url,
-                notes: data.body
-            };
-        }
-
-        return { updateAvailable: false };
-    } catch (error) {
-        console.error('Update check failed:', error);
-        return { updateAvailable: false, error: error.message };
+    if (app.isPackaged) {
+        return autoUpdater.checkForUpdates();
+    } else {
+        console.log('⚠️ Skipping update check in dev mode');
+        return null;
     }
 });
 

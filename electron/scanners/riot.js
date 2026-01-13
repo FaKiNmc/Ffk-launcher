@@ -17,20 +17,44 @@ async function getAllDrives() {
     }
 }
 
-// Find Riot Client Services executable
+// Find Riot Client Services executable - searches many common locations
 async function findRiotClientServices() {
     const drives = await getAllDrives();
-    const possiblePaths = [
-        ...drives.map(d => path.join(d, 'Riot Games', 'Riot Client', 'RiotClientServices.exe')),
-        ...drives.map(d => path.join(d, 'Program Files', 'Riot Games', 'Riot Client', 'RiotClientServices.exe')),
-        ...drives.map(d => path.join(d, 'Program Files (x86)', 'Riot Games', 'Riot Client', 'RiotClientServices.exe'))
+
+    // All possible folder prefixes where Riot might be installed
+    const folderPrefixes = [
+        '',                      // Root: D:\Riot Games
+        'Program Files',         // D:\Program Files\Riot Games
+        'Program Files (x86)',   // D:\Program Files (x86)\Riot Games
+        'juegos',                // D:\juegos\Riot Games (Spanish)
+        'Juegos',                // D:\Juegos\Riot Games
+        'Games',                 // D:\Games\Riot Games
+        'games',                 // D:\games\Riot Games
     ];
 
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            return p;
+    const possiblePaths = [];
+
+    for (const drive of drives) {
+        for (const prefix of folderPrefixes) {
+            const basePath = prefix
+                ? path.join(drive, prefix, 'Riot Games', 'Riot Client', 'RiotClientServices.exe')
+                : path.join(drive, 'Riot Games', 'Riot Client', 'RiotClientServices.exe');
+            possiblePaths.push(basePath);
         }
     }
+
+    for (const p of possiblePaths) {
+        try {
+            if (fs.existsSync(p)) {
+                console.log('✅ Found RiotClientServices at:', p);
+                return p;
+            }
+        } catch (err) {
+            // Silently skip inaccessible paths
+        }
+    }
+
+    console.warn('⚠️ RiotClientServices.exe not found in any standard location');
     return null;
 }
 
@@ -87,13 +111,16 @@ export async function scanRiotGames() {
                             if (fs.existsSync(exeFullPath) && !foundGames.has(key)) {
                                 foundGames.add(key);
 
-                                // Build launch command using RiotClientServices
+                                // Build launch command - will use shell.openExternal if RiotClient found
                                 let launchPath;
+                                let useShell = false;
+
                                 if (riotClientPath) {
-                                    // Use RiotClientServices with --launch-product argument
+                                    // Use RiotClientServices with arguments
                                     launchPath = `"${riotClientPath}" --launch-product=${info.productId} --launch-patchline=live`;
+                                    useShell = true;
                                 } else {
-                                    // Fallback to direct exe
+                                    // No RiotClient found - will show error
                                     launchPath = exeFullPath;
                                 }
 
@@ -103,10 +130,12 @@ export async function scanRiotGames() {
                                     platform: 'riot',
                                     installDir: normalizedPath,
                                     exePath: launchPath,
-                                    isCommand: !!riotClientPath, // Flag to indicate this is a command, not a path
+                                    isCommand: true,
+                                    useShellLaunch: useShell, // Flag to use shell.openExternal
+                                    requiresRiotClient: !riotClientPath,
                                     coverUrl: null
                                 });
-                                console.log(`Found Riot: ${info.name}`);
+                                console.log(`Found Riot: ${info.name} (Shell: ${useShell})`);
                             }
                         }
                     }
@@ -117,9 +146,17 @@ export async function scanRiotGames() {
         }
     }
 
-    // Also search all drives for Riot Games folders
+    // Also search all drives for Riot Games folders in various locations
     const drives = await getAllDrives();
-    const searchFolders = ['Riot Games', 'Games\\Riot Games', 'Program Files\\Riot Games', 'Juegos\\Riot Games'];
+    const searchFolders = [
+        'Riot Games',
+        'Games\\Riot Games',
+        'games\\Riot Games',
+        'Juegos\\Riot Games',
+        'juegos\\Riot Games',
+        'Program Files\\Riot Games',
+        'Program Files (x86)\\Riot Games'
+    ];
 
     for (const drive of drives) {
         for (const folder of searchFolders) {
@@ -135,9 +172,13 @@ export async function scanRiotGames() {
                 if (fs.existsSync(exeFullPath)) {
                     foundGames.add(key);
 
+                    // Build launch command
                     let launchPath;
+                    let useShell = false;
+
                     if (riotClientPath) {
                         launchPath = `"${riotClientPath}" --launch-product=${info.productId} --launch-patchline=live`;
+                        useShell = true;
                     } else {
                         launchPath = exeFullPath;
                     }
@@ -148,10 +189,12 @@ export async function scanRiotGames() {
                         platform: 'riot',
                         installDir: gamePath,
                         exePath: launchPath,
-                        isCommand: !!riotClientPath,
+                        isCommand: true,
+                        useShellLaunch: useShell,
+                        requiresRiotClient: !riotClientPath,
                         coverUrl: null
                     });
-                    console.log(`Found Riot: ${info.name}`);
+                    console.log(`Found Riot: ${info.name} (Shell: ${useShell})`);
                 }
             }
         }

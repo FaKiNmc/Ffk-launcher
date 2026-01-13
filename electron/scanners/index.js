@@ -4,6 +4,7 @@ import { scanRockstarGames } from './rockstar.js';
 import { scanRiotGames } from './riot.js';
 import { scanEAGames } from './ea.js';
 import { scanUbisoftGames } from './ubisoft.js';
+import { scanXboxGames } from './xbox.js';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
@@ -20,6 +21,7 @@ export async function scanAllGames() {
         riot: [],
         ea: [],
         ubisoft: [],
+        xbox: [],
         custom: []
     };
 
@@ -69,6 +71,14 @@ export async function scanAllGames() {
         console.log(`Found ${results.ubisoft.length} Ubisoft games`);
     } catch (e) {
         console.error('Ubisoft scan error:', e);
+    }
+
+    try {
+        console.log('Scanning Xbox/Game Pass...');
+        results.xbox = await scanXboxGames();
+        console.log(`Found ${results.xbox.length} Xbox games`);
+    } catch (e) {
+        console.error('Xbox scan error:', e);
     }
 
     // Load custom games

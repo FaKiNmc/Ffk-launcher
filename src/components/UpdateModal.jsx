@@ -1,15 +1,40 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { soundManager } from '../utils/audio';
 
 function UpdateModal({ updateData, onClose }) {
+    const [progress, setProgress] = useState(0);
+    const [isDownloaded, setIsDownloaded] = useState(false);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        if (window.electronAPI?.onDownloadProgress) {
+            window.electronAPI.onDownloadProgress((p) => {
+                setProgress(Math.round(p));
+            });
+        }
+        if (window.electronAPI?.onUpdateDownloaded) {
+            window.electronAPI.onUpdateDownloaded(() => {
+                setIsDownloaded(true);
+                setProgress(100);
+            });
+        }
+        if (window.electronAPI?.onUpdateError) {
+            window.electronAPI.onUpdateError((err) => {
+                setError(err);
+            });
+        }
+    }, []);
+
+    const handleInstall = () => {
+        soundManager.playClick();
+        if (window.electronAPI?.installUpdate) {
+            window.electronAPI.installUpdate();
+        }
+    };
+
     if (!updateData) return null;
 
-    const { version, url, notes } = updateData;
-
-    const handleDownload = () => {
-        soundManager.playClick();
-        window.electronAPI.openExternal(url);
-    };
+    const { version, notes } = updateData;
 
     return (
         <div style={{
@@ -53,12 +78,38 @@ function UpdateModal({ updateData, onClose }) {
                 </button>
 
                 <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                    <div style={{ fontSize: '40px', marginBottom: '10px' }}>✨</div>
-                    <h2 style={{ margin: 0, color: 'white' }}>Actualización Recomendada</h2>
-                    <p style={{ color: '#888', marginTop: '5px' }}>Nueva versión <strong>{version}</strong> disponible.</p>
+                    <div style={{ fontSize: '40px', marginBottom: '10px' }}>🚀</div>
+                    <h2 style={{ margin: 0, color: 'white' }}>
+                        {error ? 'Ups, algo falló' : (isDownloaded ? '¡Lista para instalar!' : 'Actualización en curso')}
+                    </h2>
+                    <p style={{ color: error ? '#f87171' : '#888', marginTop: '5px' }}>
+                        {error ? error : `Versión ${version}`}
+                    </p>
                 </div>
 
-                {notes && (
+                {!isDownloaded && (
+                    <div style={{ marginBottom: '20px' }}>
+                        <div style={{
+                            height: '8px',
+                            backgroundColor: '#333',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            marginBottom: '10px'
+                        }}>
+                            <div style={{
+                                height: '100%',
+                                width: `${progress}%`,
+                                backgroundColor: '#6366f1',
+                                transition: 'width 0.3s ease'
+                            }}></div>
+                        </div>
+                        <p style={{ textAlign: 'right', fontSize: '12px', color: '#6366f1', margin: 0 }}>
+                            {progress}% descargado
+                        </p>
+                    </div>
+                )}
+
+                {notes && !isDownloaded && (
                     <div style={{
                         background: '#15151a',
                         padding: '15px',
@@ -75,37 +126,40 @@ function UpdateModal({ updateData, onClose }) {
                 )}
 
                 <div style={{ display: 'flex', gap: '10px' }}>
-                    <button
-                        onClick={handleDownload}
-                        onMouseEnter={() => soundManager.playHover()}
-                        style={{
-                            flex: 1,
-                            backgroundColor: '#6366f1',
-                            color: 'white',
-                            border: 'none',
-                            padding: '12px',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontWeight: '600'
-                        }}
-                    >
-                        ⬇️ Descargar
-                    </button>
-                    <button
-                        onClick={onClose}
-                        onMouseEnter={() => soundManager.playHover()}
-                        style={{
-                            flex: 1,
-                            backgroundColor: 'transparent',
-                            color: '#888',
-                            border: '1px solid #444',
-                            padding: '12px',
-                            borderRadius: '6px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Quizás luego
-                    </button>
+                    {isDownloaded ? (
+                        <button
+                            onClick={handleInstall}
+                            onMouseEnter={() => soundManager.playHover()}
+                            style={{
+                                flex: 1,
+                                backgroundColor: '#4ade80',
+                                color: '#052c1e',
+                                border: 'none',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontWeight: '800'
+                            }}
+                        >
+                            🔄 Instalar y Reiniciar
+                        </button>
+                    ) : (
+                        <button
+                            onClick={onClose}
+                            onMouseEnter={() => soundManager.playHover()}
+                            style={{
+                                flex: 1,
+                                backgroundColor: 'transparent',
+                                color: '#888',
+                                border: '1px solid #444',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Seguir usando (segundo plano)
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

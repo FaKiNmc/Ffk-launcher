@@ -3,6 +3,7 @@
 
 import https from 'https';
 import http from 'http';
+import fs from 'fs';
 
 // HTTP GET returning Buffer (for images)
 function httpGetBuffer(url, timeout = 10000) {
@@ -102,27 +103,71 @@ const KNOWN_COVERS = {
     'watch dogs legion': 'https://cdn.akamai.steamstatic.com/steam/apps/2289090/library_600x900.jpg',
     'the division 2': 'https://cdn.akamai.steamstatic.com/steam/apps/2221490/library_600x900.jpg',
 
-    // Epic Games exclusives - using Epic CDN or alternatives
-    'wildgate': 'https://cdn.akamai.steamstatic.com/steam/apps/3504780/library_600x900.jpg'
+    // Epic Games exclusives
+    'wildgate': 'https://cdn.akamai.steamstatic.com/steam/apps/3504780/library_600x900.jpg',
+
+    // Xbox Game Pass popular games
+    'minecraft': 'https://upload.wikimedia.org/wikipedia/en/5/51/Minecraft_cover.png',
+    'minecraft java edition': 'https://upload.wikimedia.org/wikipedia/en/5/51/Minecraft_cover.png',
+    'minecraft bedrock edition': 'https://upload.wikimedia.org/wikipedia/en/5/51/Minecraft_cover.png',
+    'minecraft launcher': 'https://upload.wikimedia.org/wikipedia/en/5/51/Minecraft_cover.png',
+    'minecraftlauncher': 'https://upload.wikimedia.org/wikipedia/en/5/51/Minecraft_cover.png',
+    'halo infinite': 'https://upload.wikimedia.org/wikipedia/en/1/14/Halo_Infinite.png',
+    'forza horizon 5': 'https://upload.wikimedia.org/wikipedia/en/8/86/Forza_Horizon_5_cover.jpg',
+    'forza horizon 4': 'https://upload.wikimedia.org/wikipedia/en/8/81/Forza_Horizon_4_cover.jpg',
+    'forza motorsport': 'https://upload.wikimedia.org/wikipedia/en/9/93/Forza_Motorsport_%282023%29_cover.jpg',
+    'sea of thieves': 'https://upload.wikimedia.org/wikipedia/en/5/56/Sea_of_Thieves_2024_cover_art.jpg',
+    'starfield': 'https://upload.wikimedia.org/wikipedia/en/6/6d/Starfield_game_cover.jpg',
+    'age of empires iv': 'https://upload.wikimedia.org/wikipedia/en/0/0c/Age_of_Empires_IV_cover.png',
+    'age of empires 4': 'https://upload.wikimedia.org/wikipedia/en/0/0c/Age_of_Empires_IV_cover.png',
+    'flight simulator': 'https://upload.wikimedia.org/wikipedia/en/a/a4/Microsoft_Flight_Simulator_%282020%29_cover.png',
+    'microsoft flight simulator': 'https://upload.wikimedia.org/wikipedia/en/a/a4/Microsoft_Flight_Simulator_%282020%29_cover.png',
+    'psychonauts 2': 'https://upload.wikimedia.org/wikipedia/en/8/87/Psychonauts_2_cover_art.jpg',
+    'ori and the will of the wisps': 'https://upload.wikimedia.org/wikipedia/en/3/35/Ori_and_the_Will_of_the_Wisps.jpg',
+    'grounded': 'https://upload.wikimedia.org/wikipedia/en/3/3a/Grounded_cover_art.jpg',
+    'pentiment': 'https://upload.wikimedia.org/wikipedia/en/b/b4/Pentiment_cover_art.png',
+    'hi-fi rush': 'https://upload.wikimedia.org/wikipedia/en/6/62/Hi-Fi_Rush_cover_art.png'
 };
 
 // Fetch cover from RAWG.io
 async function fetchFromRawg(gameName) {
     try {
-        const searchName = gameName.replace(/[™®©]/g, '').replace(/\s+/g, ' ').trim();
-        const simpleUrl = `https://api.rawg.io/api/games?search=${encodeURIComponent(searchName)}&page_size=1`;
+        // Clean up the name for better search results
+        let searchName = gameName
+            .replace(/[™®©]/g, '')
+            .replace(/\s+/g, ' ')
+            .replace(/\(.*?\)/g, '') // Remove stuff in parentheses
+            .replace(/[_-]/g, ' ')
+            .trim();
+
+        // For Xbox games, remove common prefixes
+        searchName = searchName
+            .replace(/^Microsoft\s*/i, '')
+            .replace(/^Xbox\s*/i, '')
+            .replace(/\s*Edition$/i, '')
+            .replace(/\s*PC$/i, '')
+            .trim();
+
+        console.log(`🔍 RAWG search for: "${searchName}" (original: "${gameName}")`);
+
+        const simpleUrl = `https://api.rawg.io/api/games?search=${encodeURIComponent(searchName)}&page_size=3`;
 
         const response = await httpGetText(simpleUrl, 8000);
         const data = JSON.parse(response);
 
         if (data.results && data.results.length > 0) {
-            const game = data.results[0];
-            if (game.background_image) {
-                return game.background_image;
+            // Try to find best match
+            for (const game of data.results) {
+                if (game.background_image) {
+                    console.log(`✅ RAWG found: "${game.name}" for "${searchName}"`);
+                    return game.background_image;
+                }
             }
+        } else {
+            console.log(`❌ RAWG no results for: "${searchName}"`);
         }
     } catch (e) {
-        // console.log(`RAWG fetch failed for ${gameName}:`, e.message);
+        console.log(`RAWG fetch failed for ${gameName}:`, e.message);
     }
     return null;
 }
@@ -187,6 +232,12 @@ export async function fetchGameCover(gameName, platform, appId = null) {
         buffer = await getUrlBuffer(imageUrl);
     }
 
+    // Xbox fallback: if no cover found for Xbox games, use Xbox logo
+    if (!buffer && platform === 'xbox') {
+        imageUrl = 'https://upload.wikimedia.org/wikipedia/commons/f/f9/Xbox_one_logo.svg';
+        buffer = await getUrlBuffer(imageUrl);
+    }
+
     if (buffer) {
         const base64 = buffer.toString('base64');
         const mimeType = imageUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/jpeg';
@@ -211,6 +262,17 @@ export async function enrichGamesWithCovers(games) {
             // Let's be aggressive: Fetch for everything that isn't already a Data URI to solve all display issues.
             if (!game.coverUrl || game.coverUrl.startsWith('http')) {
                 try {
+                    // First, try to use local cover if available (Xbox games)
+                    if (game.localCover && fs.existsSync(game.localCover)) {
+                        console.log(`📁 Using local cover for ${game.name}: ${game.localCover}`);
+                        const localBuffer = fs.readFileSync(game.localCover);
+                        const ext = game.localCover.toLowerCase().split('.').pop();
+                        const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+                        const coverBase64 = `data:${mimeType};base64,${localBuffer.toString('base64')}`;
+                        return { ...game, coverUrl: coverBase64 };
+                    }
+
+                    // Otherwise, fetch from online sources
                     const coverBase64 = await fetchGameCover(game.name, game.platform, game.appId);
                     if (coverBase64) {
                         console.log(`Generated Base64 cover for ${game.name}`);

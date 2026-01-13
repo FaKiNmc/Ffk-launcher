@@ -8,6 +8,7 @@ const platformColors = {
     riot: '#d13639',
     ea: '#ff4747',
     ubisoft: '#0070c9',
+    xbox: '#107c10',
     custom: '#8b5cf6'
 };
 
@@ -18,10 +19,11 @@ const platformNames = {
     riot: 'Riot',
     ea: 'EA',
     ubisoft: 'Ubi',
+    xbox: 'Xbox',
     custom: 'Custom'
 };
 
-function GameCard({ game, onLaunch, onEdit, onDelete }) {
+function GameCard({ game, onLaunch, onEdit, onDelete, isSelected }) {
     const [imageError, setImageError] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
 
@@ -40,12 +42,13 @@ function GameCard({ game, onLaunch, onEdit, onDelete }) {
 
     return (
         <div
-            className="game-card"
+            className={`game-card ${isSelected ? 'keyboard-selected' : ''}`}
             onMouseEnter={() => {
                 setIsHovered(true);
                 soundManager.playHover();
             }}
             onMouseLeave={() => setIsHovered(false)}
+            style={isSelected ? { boxShadow: '0 0 0 3px var(--color-primary, #dc2626)', transform: 'scale(1.02)' } : {}}
         >
             <div
                 className="game-card-image-container"

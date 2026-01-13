@@ -1,6 +1,19 @@
+import { useState, useEffect } from 'react';
 import { soundManager } from '../utils/audio';
 
-function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch, updateData }) {
+function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch, updateData, searchInputRef }) {
+    const [version, setVersion] = useState('');
+
+    useEffect(() => {
+        const fetchVersion = async () => {
+            if (window.electronAPI?.getVersion) {
+                const v = await window.electronAPI.getVersion();
+                setVersion(v);
+            }
+        };
+        fetchVersion();
+    }, []);
+
     const handleMinimize = () => { soundManager.playClick(); window.electronAPI?.minimize(); };
     const handleMaximize = () => { soundManager.playClick(); window.electronAPI?.maximize(); };
     const handleClose = () => { soundManager.playClick(); window.electronAPI?.close(); };
@@ -8,8 +21,9 @@ function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch, updateData }
     return (
         <header className="title-bar">
             <div className="title-bar-drag">
-                <div className="app-logo">
-                    <h1 style={{ fontWeight: '800', fontSize: '18px' }}>FKLauncher</h1>
+                <div className="app-logo" style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <h1 style={{ fontWeight: '800', fontSize: '18px', margin: 0 }}>FKLauncher</h1>
+                    <span style={{ fontSize: '12px', color: '#666', fontWeight: '500' }}>v{version}</span>
                 </div>
             </div>
             <div className="title-bar-search">
@@ -19,8 +33,9 @@ function TitleBar({ onRefresh, onAddGame, onOpenSettings, onSearch, updateData }
                         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
                     <input
+                        ref={searchInputRef}
                         type="text"
-                        placeholder="Buscar..."
+                        placeholder="Buscar... (Ctrl+F)"
                         onChange={(e) => onSearch(e.target.value)}
                     />
                 </div>

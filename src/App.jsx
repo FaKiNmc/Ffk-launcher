@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import TitleBar from './components/TitleBar';
 import Sidebar from './components/Sidebar';
 import GameGrid from './components/GameGrid';
@@ -19,6 +19,8 @@ function App() {
     const [customGames, setCustomGames] = useState([]);
     const [updateData, setUpdateData] = useState(null);
     const [showUpdateModal, setShowUpdateModal] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const searchInputRef = useRef(null);
 
     // Load saved colors on app start
     useEffect(() => {
@@ -49,6 +51,7 @@ function App() {
                     ...result.riot,
                     ...result.ea,
                     ...result.ubisoft,
+                    ...(result.xbox || []),
                     ...result.custom
                 ];
                 setGames(allGames);
@@ -80,30 +83,39 @@ function App() {
 
     // Check for updates
     useEffect(() => {
+        // Initial check
         const checkUpdates = async () => {
             if (window.electronAPI?.checkForUpdates) {
-                const data = await window.electronAPI.checkForUpdates();
-                if (data && data.updateAvailable) {
-                    console.log('Update available:', data);
-                    setUpdateData(data);
-                    // Show modal ONLY if it was marked as "mandatory" (now Recommended)
-                    if (data.mandatory) {
-                        setShowUpdateModal(true);
-                    }
-                }
+                await window.electronAPI.checkForUpdates();
             }
         };
+
+        // Listen for results
+        if (window.electronAPI?.onUpdateAvailable) {
+            window.electronAPI.onUpdateAvailable((data) => {
+                console.log('Update available event:', data);
+                setUpdateData(data);
+                // Automatically show if it's a real update context
+                setShowUpdateModal(true);
+            });
+        }
+
         checkUpdates();
     }, []);
 
+    // Compute filtered games first (needed for keyboard navigation)
+    const filteredGames = games.filter(game => {
+        const matchesPlatform = filter === 'all' || game.platform === filter;
+        const name = game.name || '';
+        const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase());
+        return matchesPlatform && matchesSearch;
+    });
+
+    // Launch game handler (defined early for keyboard shortcuts)
     const handleLaunchGame = async (game) => {
         if (window.electronAPI) {
             console.log('🚀 Launching game:', game.name);
-
-            // Auto-Close Logic (Check BEFORE launching to debug)
             const savedSettings = localStorage.getItem('fklauncher-colors');
-            console.log('💾 Saved Settings:', savedSettings);
-
             let shouldMinimize = false;
             if (savedSettings) {
                 const settings = JSON.parse(savedSettings);
@@ -111,16 +123,103 @@ function App() {
                     shouldMinimize = true;
                 }
             }
-            console.log('⚡ Should Minimize:', shouldMinimize);
-
-            await window.electronAPI.launchGame(game.exePath, game.isCommand, game.id);
-
+            await window.electronAPI.launchGame(game.exePath, game.isCommand, game.id, game.requiresRiotClient, game.useShellLaunch);
             if (shouldMinimize) {
-                console.log('📉 Minimizing window...');
                 window.electronAPI.minimize();
             }
         }
     };
+
+    // Keyboard shortcuts handler
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const isInputFocused = document.activeElement.tagName === 'INPUT' ||
+                document.activeElement.tagName === 'TEXTAREA';
+
+            // Escape - Close any modal
+            if (e.key === 'Escape') {
+                if (showAddModal) setShowAddModal(false);
+                if (showEditModal) { setShowEditModal(false); setEditingGame(null); }
+                if (showSettingsModal) setShowSettingsModal(false);
+                if (showUpdateModal) setShowUpdateModal(false);
+                // Deselect game
+                setSelectedIndex(-1);
+                return;
+            }
+
+            // Don't process other shortcuts if typing in input
+            if (isInputFocused) return;
+
+            // Ctrl+F - Focus search
+            if (e.ctrlKey && e.key === 'f') {
+                e.preventDefault();
+                searchInputRef.current?.focus();
+                return;
+            }
+
+            // Ctrl+R - Refresh games
+            if (e.ctrlKey && e.key === 'r') {
+                e.preventDefault();
+                scanGames();
+                return;
+            }
+
+            // Navigation and actions only when no modal is open
+            const anyModalOpen = showAddModal || showEditModal || showSettingsModal || showUpdateModal;
+            if (anyModalOpen) return;
+
+            // Enter - Launch selected game
+            if (e.key === 'Enter' && selectedIndex >= 0 && selectedIndex < filteredGames.length) {
+                e.preventDefault();
+                handleLaunchGame(filteredGames[selectedIndex]);
+                return;
+            }
+
+            // Arrow navigation - calculate columns based on grid width
+            const gridElement = document.querySelector('.game-grid');
+            const gameCards = document.querySelectorAll('.game-card');
+            let columns = 4; // default
+            if (gridElement && gameCards.length > 1) {
+                // Count how many cards fit in first row by checking their Y position
+                const firstCardTop = gameCards[0].getBoundingClientRect().top;
+                columns = 0;
+                for (const card of gameCards) {
+                    if (Math.abs(card.getBoundingClientRect().top - firstCardTop) < 10) {
+                        columns++;
+                    } else {
+                        break;
+                    }
+                }
+                columns = Math.max(1, columns);
+            }
+            const totalGames = filteredGames.length;
+
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                setSelectedIndex(prev => prev < totalGames - 1 ? prev + 1 : 0);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                setSelectedIndex(prev => prev > 0 ? prev - 1 : totalGames - 1);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedIndex(prev => {
+                    const next = prev + columns;
+                    // If no game directly below, go to last game
+                    return next < totalGames ? next : totalGames - 1;
+                });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedIndex(prev => {
+                    const next = prev - columns;
+                    // If no game directly above, go to first game
+                    return next >= 0 ? next : 0;
+                });
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showAddModal, showEditModal, showSettingsModal, showUpdateModal, selectedIndex, filteredGames, scanGames, handleLaunchGame]);
 
     const handleAddGame = async (newGame) => {
         const gameWithId = { ...newGame, platform: 'custom', id: `custom_${Date.now()}` };
@@ -136,13 +235,6 @@ function App() {
         setGames(prev => [...prev, gameWithId]);
         setShowAddModal(false);
     };
-
-    const filteredGames = games.filter(game => {
-        const matchesPlatform = filter === 'all' || game.platform === filter;
-        const name = game.name || '';
-        const matchesSearch = name.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesPlatform && matchesSearch;
-    });
 
     const handleEditGame = (game) => {
         setEditingGame(game);
@@ -186,6 +278,7 @@ function App() {
                 onOpenSettings={() => setShowSettingsModal(true)}
                 onSearch={setSearchTerm}
                 updateData={updateData}
+                searchInputRef={searchInputRef}
             />
             <div className="app-content">
                 <Sidebar activeFilter={filter} onFilterChange={setFilter} />
@@ -201,6 +294,7 @@ function App() {
                             onLaunch={handleLaunchGame}
                             onEdit={handleEditGame}
                             onDelete={handleDeleteGame}
+                            selectedIndex={selectedIndex}
                         />
                     )}
                 </main>
